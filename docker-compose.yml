@@ -7,9 +7,17 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_CHAMADOS_USER}:${POSTGRES_CHAMADOS_PASSWORD}@db-chamados:5432/${POSTGRES_CHAMADOS_DB}
       TECNICOS_API_URL: http://api-tecnicos:8081
+      OTEL_SERVICE_NAME: servico-chamados
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+      OTEL_TRACES_EXPORTER: otlp
+      OTEL_METRICS_EXPORTER: none
+      OTEL_LOGS_EXPORTER: none
     depends_on:
       db-chamados:
         condition: service_healthy
+      jaeger:
+        condition: service_started
     networks:
       - rede-chamados
       - rede-servicos
@@ -43,9 +51,17 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://db-tecnicos:5432/${POSTGRES_TECNICOS_DB}
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_TECNICOS_USER}
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_TECNICOS_PASSWORD}
+      OTEL_SERVICE_NAME: servico-tecnicos
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+      OTEL_TRACES_EXPORTER: otlp
+      OTEL_METRICS_EXPORTER: none
+      OTEL_LOGS_EXPORTER: none
     depends_on:
       db-tecnicos:
         condition: service_healthy
+      jaeger:
+        condition: service_started
     networks:
       - rede-tecnicos
       - rede-servicos
@@ -69,9 +85,52 @@ services:
     networks:
       - rede-tecnicos
 
+  jaeger:
+    image: cr.jaegertracing.io/jaegertracing/jaeger:2.22.0
+    container_name: jaeger
+    ports:
+      - "16686:16686"
+      - "4317:4317"
+      - "4318:4318"
+    networks:
+      - rede-servicos
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./observabilidade/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - dados-prometheus:/prometheus
+    depends_on:
+      - api-chamados
+      - api-tecnicos
+    networks:
+      - rede-servicos
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - dados-grafana:/var/lib/grafana
+      - ./observabilidade/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observabilidade/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+    networks:
+      - rede-servicos
+
 volumes:
   dados-chamados:
   dados-tecnicos:
+  dados-prometheus:
+  dados-grafana:
 
 networks:
   rede-chamados:

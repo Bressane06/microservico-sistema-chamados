@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: "Sistema de Chamados"
+    orgId: 1
+    folder: "Sistema de Chamados"
+    type: file
+    disableDeletion: false
+    editable: true
+    options:
+      path: /var/lib/grafana/dashboards

@@ -2,6 +2,7 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from prometheus_fastapi_instrumentator import Instrumentator
 
 from app.database import Base, engine
 from app import models
@@ -44,3 +45,7 @@ def inicio():
 @app.get("/health", tags=["Monitoramento"])
 def health():
     return {"status": "ok"}
+
+
+# Disponibiliza métricas para o Prometheus.
+Instrumentator().instrument(app).expose(app)
