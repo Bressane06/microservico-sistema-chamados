@@ -1,0 +1,79 @@
+services:
+  api-chamados:
+    build: ./servico-chamados
+    container_name: api-chamados
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_CHAMADOS_USER}:${POSTGRES_CHAMADOS_PASSWORD}@db-chamados:5432/${POSTGRES_CHAMADOS_DB}
+      TECNICOS_API_URL: http://api-tecnicos:8081
+    depends_on:
+      db-chamados:
+        condition: service_healthy
+    networks:
+      - rede-chamados
+      - rede-servicos
+
+  db-chamados:
+    image: postgres:17
+    container_name: db-chamados
+    environment:
+      POSTGRES_USER: ${POSTGRES_CHAMADOS_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_CHAMADOS_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_CHAMADOS_DB}
+    ports:
+      - "5433:5432"
+    volumes:
+      - dados-chamados:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - rede-chamados
+
+  api-tecnicos:
+    build: ./servico-tecnicos
+    container_name: api-tecnicos
+    ports:
+      - "8081:8081"
+    environment:
+      SERVER_PORT: 8081
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db-tecnicos:5432/${POSTGRES_TECNICOS_DB}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_TECNICOS_USER}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_TECNICOS_PASSWORD}
+    depends_on:
+      db-tecnicos:
+        condition: service_healthy
+    networks:
+      - rede-tecnicos
+      - rede-servicos
+
+  db-tecnicos:
+    image: postgres:17
+    container_name: db-tecnicos
+    environment:
+      POSTGRES_USER: ${POSTGRES_TECNICOS_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_TECNICOS_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_TECNICOS_DB}
+    ports:
+      - "5434:5432"
+    volumes:
+      - dados-tecnicos:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - rede-tecnicos
+
+volumes:
+  dados-chamados:
+  dados-tecnicos:
+
+networks:
+  rede-chamados:
+  rede-tecnicos:
+  rede-servicos:
