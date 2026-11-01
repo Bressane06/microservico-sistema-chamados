@@ -259,7 +259,7 @@ Não existe chave estrangeira entre tabelas de bancos pertencentes a microsservi
 
 **Tecnologia:** Python + FastAPI + SQLAlchemy.
 
-**Base URL:** `http://localhost:8000`
+**Base URL (via gateway):** `http://localhost:8080`
 
 ### Endpoints implementados
 
@@ -316,13 +316,13 @@ A API Python consulta o serviço Java para validar o técnico. Após a confirma�
 
 ### Documentação interativa
 
-`http://localhost:8000/docs`
+`http://localhost:8080/docs`
 
 ## 7. Microsserviço de técnicos
 
 **Tecnologia:** Java + Spring Boot + Spring Data JPA.
 
-**Base URL:** `http://localhost:8081`
+**Base URL (via gateway):** `http://localhost:8080`
 
 ### Endpoints implementados
 
@@ -352,7 +352,7 @@ A documentação Swagger do Spring Boot depende da configuração da biblioteca 
 
 Endereço esperado:
 
-`http://localhost:8081/swagger-ui/index.html`
+`http://localhost:8080/swagger-ui/index.html`
 
 ## 8. Configuração do ambiente
 
@@ -419,20 +419,79 @@ Esses valores são destinados ao desenvolvimento local. Não utilize essas senha
 
 O projeto possui configuração de Docker Compose para orquestrar os dois microsserviços e seus respectivos bancos PostgreSQL.
 
-### Portas configuradas
+### Como executar (máquina limpa)
 
-| Serviço | Porta local | Porta interna |
-|---|---:|---:|
-| API de chamados | 8000 | 8000 |
-| PostgreSQL de chamados | 5433 | 5432 |
-| API de técnicos | 8081 | 8081 |
-| PostgreSQL de técnicos | 5434 | 5432 |
+```bash
+git clone <URL-DO-REPOSITORIO>
+cd microservico-sistema-chamados
+
+# Opcional: o compose possui valores padrão, mas o ideal é criar o seu .env
+cp .env.example .env
+
+docker compose up -d --build
+docker compose ps        # aguarde todos os serviços em "healthy"
+```
+
+A primeira subida demora alguns minutos (build do Maven e download das imagens).
+
+### Validação rápida
+
+```bash
+# Saúde do gateway
+curl http://localhost:8080/health
+
+# Cria um técnico (serviço Java) pelo gateway
+curl -X POST http://localhost:8080/tecnicos \
+  -H "Content-Type: application/json" \
+  -d '{"nome":"Ana Souza","email":"ana@exemplo.com","especialidade":"Redes"}'
+
+# Cria um chamado (serviço Python) pelo gateway
+curl -X POST http://localhost:8080/chamados \
+  -H "Content-Type: application/json" \
+  -d '{"titulo":"Sem acesso à VPN","descricao":"Erro de autenticação","categoria":"Redes","prioridade":"ALTA"}'
+
+# Atribui o técnico ao chamado (comunicação Python -> Java)
+curl -X POST http://localhost:8080/chamados/1/atribuir-tecnico \
+  -H "Content-Type: application/json" \
+  -d '{"tecnico_id":1}'
+```
+
+Para encerrar: `docker compose down` (use `-v` para apagar também os dados).
+
+### API Gateway (NGINX)
+
+O NGINX (`gateway/nginx.conf`) é a única porta de entrada da aplicação. Os
+microsserviços usam apenas `expose` no compose, ou seja, **não são acessíveis
+diretamente do host**; o cliente não precisa conhecer a topologia interna.
+
+| Rota no gateway | Destino |
+|---|---|
+| `/chamados/**`, `/docs`, `/openapi.json` | `api-chamados:8000` (Python / FastAPI) |
+| `/tecnicos/**`, `/swagger-ui`, `/v3/api-docs` | `api-tecnicos:8081` (Java / Spring Boot) |
+| `/health` | resposta do próprio gateway |
+
+Se um serviço estiver fora do ar, o gateway responde `503` em JSON. Cada
+requisição recebe um `X-Request-ID`, e o cabeçalho `traceparent` é repassado,
+preservando o rastreamento distribuído no Jaeger.
+
+### Portas expostas no host
+
+| Componente | Endereço | Observação |
+|---|---|---|
+| **API Gateway** | http://localhost:8080 | entrada única da aplicação |
+| Jaeger (traces) | http://localhost:16686 | observabilidade |
+| Prometheus | http://localhost:9090 | métricas |
+| Grafana | http://localhost:3000 | `admin` / `admin` |
+| PostgreSQL de chamados | 127.0.0.1:5433 | somente local, para depuração |
+| PostgreSQL de técnicos | 127.0.0.1:5434 | somente local, para depuração |
+
+As APIs (`8000` e `8081`) permanecem acessíveis apenas dentro da rede Docker.
 
 ### Redes
 
 - `rede-chamados`: comunicação entre a API de chamados e seu banco.
 - `rede-tecnicos`: comunicação entre a API de técnicos e seu banco.
-- `rede-servicos`: comunicação entre os dois microsserviços.
+- `rede-servicos`: comunicação entre gateway, microsserviços e ferramentas de observabilidade.
 
 ### Volumes
 
@@ -463,14 +522,13 @@ No Docker Compose, as variáveis de ambiente sobrescrevem a URL de conexão para
 
 ### Estado da infraestrutura
 
-- [x] Configuração inicial do Docker Compose.
-- [x] Configuração dos dois bancos PostgreSQL.
-- [x] Healthcheck dos bancos.
-- [x] Volumes para persistência.
-- [x] Redes independentes e rede compartilhada entre serviços.
-- [ ] Construção e validação das imagens das APIs.
-- [ ] Execução completa das quatro aplicações/containers pelo Compose.
-- [ ] Validação da integração entre APIs dentro do Docker.
+- [x] Docker Compose com todos os serviços e bancos.
+- [x] Dois bancos PostgreSQL isolados, com healthcheck e volumes.
+- [x] Redes independentes por serviço e rede compartilhada.
+- [x] API Gateway (NGINX) como entrada única.
+- [x] Healthcheck das APIs e do gateway (o gateway só sobe com as APIs saudáveis).
+- [x] Versões de imagem fixadas (Prometheus, Grafana, NGINX, PostgreSQL).
+- [ ] Validar a execução completa em uma máquina limpa.
 
 ## 10. Comunicação entre microsserviços
 
@@ -732,9 +790,9 @@ docker compose down -v
 
 | Serviço | Endereço |
 |---|---|
-| Swagger FastAPI | http://localhost:8000/docs |
-| API Spring Boot | http://localhost:8081 |
-| Swagger Spring Boot | http://localhost:8081/swagger-ui/index.html |
+| Swagger FastAPI | http://localhost:8080/docs |
+| API Spring Boot | http://localhost:8080/tecnicos |
+| Swagger Spring Boot | http://localhost:8080/swagger-ui/index.html |
 
 ---
 

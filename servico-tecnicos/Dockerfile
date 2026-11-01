@@ -1,13 +1,18 @@
-
 FROM eclipse-temurin:21-jdk AS build
 
 WORKDIR /app
 
 COPY .mvn .mvn
 COPY mvnw pom.xml ./
-COPY src ./src
 
-RUN chmod +x mvnw && ./mvnw -DskipTests package
+# Remove CRLF caso o mvnw tenha sido clonado no Windows e torna-o executável.
+RUN sed -i 's/\r$//' mvnw && chmod +x mvnw
+
+# Baixa as dependências em uma camada separada (cache de build).
+RUN ./mvnw -q dependency:go-offline
+
+COPY src ./src
+RUN ./mvnw -q -DskipTests package
 
 FROM eclipse-temurin:21-jre
 
