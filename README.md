@@ -45,32 +45,22 @@ Se você já possui o projeto localmente, entre na pasta raiz — aquela que con
 
 ### 2. Configurar as variáveis de ambiente
 
-Crie o arquivo `.env` a partir do modelo:
-
-**PowerShell:**
-```powershell
-Copy-Item .env.example .env
-```
-
-**Linux / macOS / Git Bash:**
-```bash
-cp .env.example .env
-```
+Crie o arquivo `.env` a partir do modelo.
 
 O arquivo `.env.example` já contém os nomes das variáveis necessários. Para uma execução local de demonstração, os valores padrão funcionam. Antes de expor o ambiente em uma rede, altere as senhas e não compartilhe o arquivo `.env`.
 
 Variáveis utilizadas:
 
-| Variável | Finalidade |
-|---|---|
-| `POSTGRES_CHAMADOS_USER` | Usuário do banco de chamados |
-| `POSTGRES_CHAMADOS_PASSWORD` | Senha do banco de chamados |
-| `POSTGRES_CHAMADOS_DB` | Nome do banco de chamados |
-| `POSTGRES_TECNICOS_USER` | Usuário do banco de técnicos |
-| `POSTGRES_TECNICOS_PASSWORD` | Senha do banco de técnicos |
-| `POSTGRES_TECNICOS_DB` | Nome do banco de técnicos |
-| `RABBITMQ_USER` | Usuário do RabbitMQ |
-| `RABBITMQ_PASSWORD` | Senha do RabbitMQ |
+| Variável                     | Finalidade                   |
+| ---------------------------- | ---------------------------- |
+| `POSTGRES_CHAMADOS_USER`     | Usuário do banco de chamados |
+| `POSTGRES_CHAMADOS_PASSWORD` | Senha do banco de chamados   |
+| `POSTGRES_CHAMADOS_DB`       | Nome do banco de chamados    |
+| `POSTGRES_TECNICOS_USER`     | Usuário do banco de técnicos |
+| `POSTGRES_TECNICOS_PASSWORD` | Senha do banco de técnicos   |
+| `POSTGRES_TECNICOS_DB`       | Nome do banco de técnicos    |
+| `RABBITMQ_USER`              | Usuário do RabbitMQ          |
+| `RABBITMQ_PASSWORD`          | Senha do RabbitMQ            |
 
 ### 3. Validar a configuração do Compose
 
@@ -210,28 +200,28 @@ O script utiliza as APIs pelo gateway, não grava diretamente nos bancos.
 
 ### 8. Acessar as ferramentas de observabilidade
 
-| Ferramenta | Endereço | Acesso |
-|---|---|---|
-| Jaeger | http://localhost:16686 | Visualização de traces |
-| Prometheus | http://localhost:9090 | Métricas e estado dos targets |
-| Grafana | http://localhost:3000 | `admin` / `admin` (padrão local) |
-| RabbitMQ Management | http://localhost:15672 | Credenciais definidas no `.env` |
+| Ferramenta          | Endereço               | Acesso                           |
+| ------------------- | ---------------------- | -------------------------------- |
+| Jaeger              | http://localhost:16686 | Visualização de traces           |
+| Prometheus          | http://localhost:9090  | Métricas e estado dos targets    |
+| Grafana             | http://localhost:3000  | `admin` / `admin` (padrão local) |
+| RabbitMQ Management | http://localhost:15672 | Credenciais definidas no `.env`  |
 
 No Prometheus, acesse **Status → Targets** para verificar se os alvos estão sendo coletados. No Grafana, consulte o dashboard provisionado do sistema. No RabbitMQ, a aba **Queues** permite acompanhar as filas criadas para os eventos de chamados.
 
 ## Portas utilizadas
 
-| Componente | Porta no host | Observação |
-|---|---:|---|
-| API Gateway | `8080` | Entrada das APIs |
-| PostgreSQL — chamados | `5433` | Vinculado a `127.0.0.1`, uso local |
-| PostgreSQL — técnicos | `5434` | Vinculado a `127.0.0.1`, uso local |
-| RabbitMQ Management | `15672` | Painel administrativo |
-| Jaeger UI | `16686` | Rastreamento |
-| Jaeger OTLP gRPC | `4317` | Recepção de traces |
-| Jaeger OTLP HTTP | `4318` | Recepção OTLP |
-| Prometheus | `9090` | Métricas |
-| Grafana | `3000` | Dashboards |
+| Componente            | Porta no host | Observação                         |
+| --------------------- | ------------: | ---------------------------------- |
+| API Gateway           |        `8080` | Entrada das APIs                   |
+| PostgreSQL — chamados |        `5433` | Vinculado a `127.0.0.1`, uso local |
+| PostgreSQL — técnicos |        `5434` | Vinculado a `127.0.0.1`, uso local |
+| RabbitMQ Management   |       `15672` | Painel administrativo              |
+| Jaeger UI             |       `16686` | Rastreamento                       |
+| Jaeger OTLP gRPC      |        `4317` | Recepção de traces                 |
+| Jaeger OTLP HTTP      |        `4318` | Recepção OTLP                      |
+| Prometheus            |        `9090` | Métricas                           |
+| Grafana               |        `3000` | Dashboards                         |
 
 As portas `8000` (FastAPI) e `8081` (Spring Boot) são internas à rede Docker. A comunicação externa com as APIs deve ser feita pela porta `8080` do gateway.
 
@@ -272,4 +262,3 @@ A documentação detalhada da arquitetura, dos modelos de dados, dos endpoints, 
 ```
 
 atualmente já tem um readme, atualize ele com os valores/estrutura atual, depois renomeie para doc/tecnica e crie um outro readme para ter isso: "O repositório deve conter um guia claro de instalação e execução no arquivo README.md (passo a passo para subida dos contêineres e validação da aplicação)"
-
