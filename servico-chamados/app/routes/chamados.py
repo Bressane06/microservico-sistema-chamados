@@ -12,6 +12,10 @@ from app.schemas import (
     HistoricoResposta,
     StatusChamado,
 )
+from app.services.eventos import (
+    publicar_chamado_atribuido,
+    publicar_chamado_encerrado,
+)
 from app.services.historico import registrar_alteracao
 
 router = APIRouter(prefix="/chamados", tags=["Chamados"])
@@ -152,6 +156,14 @@ def atualizar_chamado(
     try:
         db.commit()
         db.refresh(chamado)
+
+        # Evento publicado somente após o commit.
+        if chamado.status in (
+            StatusChamado.CANCELADO.value,
+            StatusChamado.RESOLVIDO.value,
+        ):
+            publicar_chamado_encerrado(chamado)
+
         return chamado
 
     except Exception:
@@ -191,6 +203,9 @@ def cancelar_chamado(
     try:
         db.commit()
         db.refresh(chamado)
+
+        publicar_chamado_encerrado(chamado)
+
         return chamado
 
     except Exception:
@@ -237,6 +252,13 @@ def atribuir_tecnico(
             detail="Não é possível atribuir técnico a um chamado encerrado.",
         )
 
+    # Verifica se já está atribuído ao mesmo técnico.
+    if chamado.tecnico_id == dados.tecnico_id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Esse técnico já está atribuído ao chamado.",
+        )
+
     # Consulta o técnico no microsserviço Java.
     tecnico = consultar_tecnico(dados.tecnico_id)
 
@@ -247,12 +269,7 @@ def atribuir_tecnico(
             detail="O técnico não está disponível para receber chamados.",
         )
 
-    # Verifica se já está atribuído ao mesmo técnico.
-    if chamado.tecnico_id == dados.tecnico_id:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Esse técnico já está atribuído ao chamado.",
-        )
+    tecnico_anterior_id = chamado.tecnico_id
 
     valor_anterior = (
         str(chamado.tecnico_id)
@@ -273,6 +290,9 @@ def atribuir_tecnico(
 
         db.commit()
         db.refresh(chamado)
+
+        # Notifica o serviço de técnicos (assíncrono, via RabbitMQ).
+        publicar_chamado_atribuido(chamado, tecnico_anterior_id)
 
         return chamado
 

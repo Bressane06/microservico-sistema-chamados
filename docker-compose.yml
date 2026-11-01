@@ -8,6 +8,7 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_CHAMADOS_USER:-chamados_user}:${POSTGRES_CHAMADOS_PASSWORD:-troque_esta_senha}@db-chamados:5432/${POSTGRES_CHAMADOS_DB:-chamados_db}
       TECNICOS_API_URL: http://api-tecnicos:8081
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-chamados}:${RABBITMQ_PASSWORD:-troque_esta_senha}@rabbitmq:5672/%2F
       OTEL_SERVICE_NAME: servico-chamados
       OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://jaeger:4317
       OTEL_EXPORTER_OTLP_PROTOCOL: grpc
@@ -16,6 +17,8 @@ services:
       OTEL_LOGS_EXPORTER: none
     depends_on:
       db-chamados:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
       jaeger:
         condition: service_started
@@ -61,6 +64,11 @@ services:
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_TECNICOS_USER:-tecnicos_user}
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_TECNICOS_PASSWORD:-troque_esta_senha}
 
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_PORT: 5672
+      SPRING_RABBITMQ_USERNAME: ${RABBITMQ_USER:-chamados}
+      SPRING_RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-troque_esta_senha}
+
       OTEL_SERVICE_NAME: servico-tecnicos
       OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://jaeger:4317
       OTEL_EXPORTER_OTLP_PROTOCOL: grpc
@@ -69,6 +77,8 @@ services:
       OTEL_LOGS_EXPORTER: none
     depends_on:
       db-tecnicos:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
       jaeger:
         condition: service_started
@@ -101,6 +111,29 @@ services:
       retries: 10
     networks:
       - rede-tecnicos
+
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-chamados}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-troque_esta_senha}
+    ports:
+      - "15672:15672"   # painel de administração
+    expose:
+      - "5672"          # AMQP (apenas rede interna)
+      - "15692"         # métricas Prometheus
+    volumes:
+      - dados-rabbitmq:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    networks:
+      - rede-servicos
 
   api-gateway:
     image: nginx:1.27-alpine
@@ -146,6 +179,7 @@ services:
     depends_on:
       - api-chamados
       - api-tecnicos
+      - rabbitmq
     networks:
       - rede-servicos
 
@@ -172,6 +206,7 @@ volumes:
   dados-tecnicos:
   dados-prometheus:
   dados-grafana:
+  dados-rabbitmq:
 
 networks:
   rede-chamados:

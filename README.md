@@ -85,10 +85,10 @@ O sistema é composto por duas APIs independentes:
 | Rastreamento distribuído | OpenTelemetry + Jaeger (pendente) |
 | Métricas | Prometheus (pendente) |
 | Dashboards | Grafana (pendente) |
-| Testes Python | Pytest (pendente) |
+| Testes Python | Pytest (`pytest` em `servico-chamados`) |
 | Testes Java | JUnit (pendente) |
 | Documentação | Swagger / OpenAPI |
-| Mensageria opcional | RabbitMQ |
+| Mensageria | RabbitMQ (`pika` no Python, Spring AMQP no Java) |
 
 ## 3. Pré-requisitos
 
@@ -482,6 +482,7 @@ preservando o rastreamento distribuído no Jaeger.
 | Jaeger (traces) | http://localhost:16686 | observabilidade |
 | Prometheus | http://localhost:9090 | métricas |
 | Grafana | http://localhost:3000 | `admin` / `admin` |
+| RabbitMQ (painel) | http://localhost:15672 | usuário/senha do `.env` (padrão `chamados` / `troque_esta_senha`) |
 | PostgreSQL de chamados | 127.0.0.1:5433 | somente local, para depuração |
 | PostgreSQL de técnicos | 127.0.0.1:5434 | somente local, para depuração |
 
@@ -527,6 +528,7 @@ No Docker Compose, as variáveis de ambiente sobrescrevem a URL de conexão para
 - [x] Redes independentes por serviço e rede compartilhada.
 - [x] API Gateway (NGINX) como entrada única.
 - [x] Healthcheck das APIs e do gateway (o gateway só sobe com as APIs saudáveis).
+- [x] RabbitMQ com healthcheck, volume e métricas no Prometheus.
 - [x] Versões de imagem fixadas (Prometheus, Grafana, NGINX, PostgreSQL).
 - [ ] Validar a execução completa em uma máquina limpa.
 
@@ -591,9 +593,58 @@ A API Python não deve registrar uma atribuição quando não houver confirmaç�
 
 Como são dois bancos, não existe uma única transação SQL capaz de reverter automaticamente alterações nos dois serviços. Futuramente, podem ser implementadas operações de compensação ou mensageria.
 
-### Mensageria opcional
+### Mensageria assíncrona (RabbitMQ)
 
-RabbitMQ poderá ser adicionado posteriormente para comunicação assíncrona, como notificações de abertura, atualização e encerramento de chamados.
+Além do HTTP síncrono (consulta do técnico), os serviços trocam **eventos** por
+um *topic exchange* durável chamado `chamados.eventos`.
+
+| Evento (routing key) | Produtor | Consumidor | Efeito |
+|---|---|---|---|
+| `chamado.atribuido` | serviço de chamados (Python, `pika`) | serviço de técnicos (Java, Spring AMQP) | técnico atribuído fica **indisponível**; o técnico anterior (se houver) é **liberado** |
+| `chamado.encerrado` | serviço de chamados | serviço de técnicos | chamado resolvido ou cancelado **libera** o técnico |
+
+```
+ Cliente -> Gateway -> serviço de chamados --(commit no banco)--> publica evento
+                                                                      |
+                                                              RabbitMQ (chamados.eventos)
+                                                                      |
+                                              fila tecnicos.chamado-atribuido / -encerrado
+                                                                      |
+                                                       serviço de técnicos atualiza `disponivel`
+```
+
+Decisões de projeto:
+
+- O evento é publicado **depois do commit**. Se o broker estiver fora do ar, o
+  chamado é salvo e a falha é registrada em log (a requisição não falha).
+  Essa limitação (*dual write*) poderia ser resolvida com o padrão
+  *Transactional Outbox*.
+- O consumidor é **idempotente**: técnico inexistente ou inativo é ignorado, e
+  mensagens com erro não voltam para a fila (`default-requeue-rejected=false`).
+- A disponibilidade do técnico passa a ter **consistência eventual**: existe uma
+  pequena janela entre a atribuição e o consumo do evento.
+
+Como demonstrar:
+
+```bash
+# 1. Técnico começa disponível
+curl http://localhost:8080/tecnicos/1                # "disponivel": true
+
+# 2. Atribui ao chamado (publica o evento)
+curl -X POST http://localhost:8080/chamados/1/atribuir-tecnico \
+  -H "Content-Type: application/json" -d '{"tecnico_id":1}'
+
+# 3. Segundos depois, o consumidor Java já atualizou o técnico
+curl http://localhost:8080/tecnicos/1                # "disponivel": false
+
+# 4. Cancela o chamado (evento chamado.encerrado) -> técnico volta a ficar disponível
+curl -X POST http://localhost:8080/chamados/1/cancelar
+curl http://localhost:8080/tecnicos/1                # "disponivel": true
+```
+
+No painel do RabbitMQ (`http://localhost:15672`, aba *Queues*) é possível ver as
+filas `tecnicos.chamado-atribuido` e `tecnicos.chamado-encerrado` e as mensagens
+processadas.
 
 ## 11. Observabilidade
 
