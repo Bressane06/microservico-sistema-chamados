@@ -15,6 +15,7 @@ from app.schemas import (
 from app.services.eventos import (
     publicar_chamado_atribuido,
     publicar_chamado_encerrado,
+    publicar_chamado_excluido,
 )
 from app.services.historico import registrar_alteracao
 
@@ -299,3 +300,47 @@ def atribuir_tecnico(
     except Exception:
         db.rollback()
         raise
+
+
+@router.delete(
+    "/{chamado_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def excluir_chamado(
+    chamado_id: int,
+    db: Session = Depends(get_db),
+):
+    """Exclui definitivamente um chamado e o seu histórico.
+
+    Chamados resolvidos são preservados para auditoria. Para encerrar um
+    chamado mantendo o registro, use a rota de cancelamento.
+    """
+    chamado = buscar_chamado(db, chamado_id)
+
+    if chamado.status == StatusChamado.RESOLVIDO.value:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Chamados resolvidos não podem ser excluídos "
+                "(preservados para auditoria)."
+            ),
+        )
+
+    # Capturados antes do commit: depois dele a instância não é mais legível.
+    # Chamados cancelados já tiveram o técnico liberado no cancelamento.
+    tecnico_a_liberar = (
+        chamado.tecnico_id
+        if chamado.status != StatusChamado.CANCELADO.value
+        else None
+    )
+
+    try:
+        # O histórico é removido junto (cascade no relacionamento).
+        db.delete(chamado)
+        db.commit()
+
+    except Exception:
+        db.rollback()
+        raise
+
+    publicar_chamado_excluido(chamado_id, tecnico_a_liberar)

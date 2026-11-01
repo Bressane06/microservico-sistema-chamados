@@ -155,6 +155,8 @@ sistema-chamados/
 ├── observabilidade/
 │   └── prometheus.yml
 │
+├── scripts/
+│   └── popular_banco.py
 ├── docker-compose.yml
 ├── .env.example
 ├── .gitignore
@@ -269,6 +271,7 @@ Não existe chave estrangeira entre tabelas de bancos pertencentes a microsservi
 | GET | `/chamados` | Listar chamados |
 | GET | `/chamados/{id}` | Consultar detalhes |
 | PATCH | `/chamados/{id}` | Atualizar descrição, prioridade ou status |
+| DELETE | `/chamados/{id}` | Excluir chamado e seu histórico (`204`) |
 | POST | `/chamados/{id}/cancelar` | Cancelar chamado |
 | GET | `/chamados/{id}/historico` | Consultar histórico |
 | POST | `/chamados/{id}/atribuir-tecnico` | Atribuir técnico por meio da API Java |
@@ -281,9 +284,26 @@ Não existe chave estrangeira entre tabelas de bancos pertencentes a microsservi
 - Atualização de descrição, prioridade e status.
 - Bloqueio de alterações em chamados encerrados.
 - Impedimento de reabertura pela rota de atualização.
-- Cancelamento de chamados.
+- Cancelamento de chamados (encerramento lógico, mantém o registro).
+- Exclusão definitiva (`DELETE`) de chamados e do seu histórico. Chamados
+  **resolvidos não podem ser excluídos** (`409`), pois são preservados para
+  auditoria. Se o chamado excluído ainda tinha técnico, um evento
+  `chamado.encerrado` libera o técnico via RabbitMQ.
 - Registro das alterações no histórico.
 - Validação do técnico por meio da comunicação HTTP com o serviço Java.
+
+### CRUD completo
+
+| Operação | Chamados (Python) | Técnicos (Java) |
+|---|---|---|
+| Create | `POST /chamados` | `POST /tecnicos` |
+| Read | `GET /chamados`, `GET /chamados/{id}` | `GET /tecnicos`, `GET /tecnicos/{id}`, `GET /tecnicos/disponiveis` |
+| Update | `PATCH /chamados/{id}` | `PUT /tecnicos/{id}` |
+| Delete | `DELETE /chamados/{id}` (física) | `DELETE /tecnicos/{id}` (lógica: desativa) |
+
+A exclusão de técnicos é lógica de propósito: chamados antigos continuam
+referenciando o `tecnico_id`. Já em chamados, `cancelar` é o encerramento que
+preserva o registro e `DELETE` remove o chamado e o histórico.
 
 ### Exemplo de cadastro
 
@@ -457,6 +477,24 @@ curl -X POST http://localhost:8080/chamados/1/atribuir-tecnico \
 ```
 
 Para encerrar: `docker compose down` (use `-v` para apagar também os dados).
+
+### Popular o sistema com dados de exemplo
+
+Com o ambiente no ar, o script `scripts/popular_banco.py` cadastra técnicos e
+chamados e simula um atendimento (atribuições, andamento, resolução e
+cancelamento). Ele usa **somente a biblioteca padrão do Python 3.9+**:
+
+```bash
+python scripts/popular_banco.py            # usa o gateway em http://localhost:8080
+python scripts/popular_banco.py --forcar   # cria os chamados novamente
+```
+
+O script grava pelas **APIs** (via gateway), e não direto nos bancos, para
+respeitar o *database per service*, passar pelas validações e disparar os
+eventos do RabbitMQ. Ele é idempotente: técnicos e chamados já existentes são
+ignorados. Ao final, mostra um resumo e a disponibilidade dos técnicos.
+
+Para recomeçar do zero (apaga os volumes dos bancos): `docker compose down -v`.
 
 ### API Gateway (NGINX)
 

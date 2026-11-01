@@ -78,6 +78,7 @@ def publicar_evento(
 def publicar_chamado_atribuido(chamado, tecnico_anterior_id: int | None):
     """Informa que um técnico foi atribuído (e qual foi substituído)."""
     # Os identificadores também vão nos cabeçalhos AMQP para o consumidor
+    # Java leia-os sem depender de um conversor JSON.
     headers = {
         "chamado_id": chamado.id,
         "tecnico_id": chamado.tecnico_id,
@@ -111,5 +112,28 @@ def publicar_chamado_encerrado(chamado):
         {
             "chamado_id": chamado.id,
             "tecnico_id": chamado.tecnico_id,
+        },
+    )
+
+
+def publicar_chamado_excluido(chamado_id: int, tecnico_id: int | None):
+    """Informa que o chamado foi excluído (libera o técnico, se houver).
+
+    Recebe os identificadores (e não o objeto) porque, após o commit, a
+    instância excluída já não pode mais ser lida.
+    """
+    if tecnico_id is None:
+        return False
+
+    return publicar_evento(
+        ROTA_ENCERRADO,
+        {
+            "chamado_id": chamado_id,
+            "tecnico_id": tecnico_id,
+            "status": "EXCLUIDO",
+        },
+        {
+            "chamado_id": chamado_id,
+            "tecnico_id": tecnico_id,
         },
     )
