@@ -260,5 +260,3 @@ A documentação detalhada da arquitetura, dos modelos de dados, dos endpoints, 
 ├── servico-chamados/
 └── servico-tecnicos/
 ```
-
-atualmente já tem um readme, atualize ele com os valores/estrutura atual, depois renomeie para doc/tecnica e crie um outro readme para ter isso: "O repositório deve conter um guia claro de instalação e execução no arquivo README.md (passo a passo para subida dos contêineres e validação da aplicação)"
